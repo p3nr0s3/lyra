@@ -85,6 +85,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     customBaseUrl: "",
     customApiKey: "",
     customModelName: "",
+    atomicBaseUrl: "",
+    atomicApiKey: "",
   },
   skills: DEFAULT_DIRECTORY_SKILLS,
   connectors: DEFAULT_CONNECTORS,

@@ -4,6 +4,7 @@ import { CLOUD_MODEL_PRESETS } from "./constants";
 import { ReasoningStreamParser } from "./reasoningParser";
 import { buildToolDirectivePrompt } from "./tools";
 import { countTokens } from "./tokenizer";
+import { isAtomicModelId } from "./atomicChat";
 
 export interface ChatStreamOptions {
   hostUrl?: string;
@@ -42,6 +43,8 @@ export interface ChatStreamOptions {
 }
 
 export function detectModelProvider(modelName: string): ModelProvider {
+  if (isAtomicModelId(modelName)) return "atomic";
+
   const cloudMatch = CLOUD_MODEL_PRESETS.find((m) => m.id === modelName);
   if (cloudMatch) return cloudMatch.provider;
 
@@ -93,6 +96,8 @@ export function getApiKeyForProvider(provider: ModelProvider, apiKeys?: ApiKeysC
       return apiKeys.deepseekApiKey;
     case "openrouter":
       return apiKeys.openrouterApiKey;
+    case "atomic":
+      return apiKeys.atomicApiKey;
     case "custom":
       return apiKeys.customApiKey;
     default:
@@ -129,6 +134,19 @@ export async function fetchOllamaModels(hostUrl = "http://localhost:11434"): Pro
     console.error("Error fetching Ollama models:", err);
     return [];
   }
+}
+
+/** Model ids loaded on an Atomic Chat server (unprefixed). Throws with the server's reason on failure. */
+export async function fetchAtomicModels(baseUrl?: string, apiKey?: string): Promise<string[]> {
+  const res = await apiFetch("/api/atomic/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseUrl, apiKey }),
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Atomic Chat request failed (${res.status})`);
+  return Array.isArray(data.models) ? data.models : [];
 }
 
 // ============================================================================
@@ -259,6 +277,7 @@ export async function streamChatCompletion({
           topP,
           apiKey,
           customBaseUrl,
+          atomicBaseUrl: apiKeys?.atomicBaseUrl,
         }),
         signal,
       });

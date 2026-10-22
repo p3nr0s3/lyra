@@ -19,6 +19,7 @@ export type ModelProvider =
   | "groq"
   | "deepseek"
   | "openrouter"
+  | "atomic"
   | "custom";
 
 export interface OllamaModelDetails {
@@ -56,6 +57,8 @@ export interface ApiKeysConfig {
   customBaseUrl?: string;
   customApiKey?: string;
   customModelName?: string;
+  atomicBaseUrl?: string;
+  atomicApiKey?: string;
 }
 
 export interface ModelPullProgress {

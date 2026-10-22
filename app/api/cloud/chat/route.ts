@@ -4,6 +4,7 @@ import { extractImageParts, toAnthropicMessages, toGeminiContents, toOpenAiMessa
 import { redactSensitiveContent } from "@/lib/redaction";
 import { getCorsHeaders } from "@/lib/corsHeaders";
 import { assertOllamaHostUrl, SsrfBlockedError } from "@/lib/ssrfGuard";
+import { fromAtomicModelId, normalizeAtomicBaseUrl } from "@/lib/atomicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ const PROVIDER_ENV_VARS: Record<string, string> = {
   groq: "GROQ_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  atomic: "ATOMIC_CHAT_API_KEY",
 };
 
 function resolveApiKey(provider: string, clientSuppliedKey?: string): string | undefined {
@@ -78,6 +80,7 @@ export async function POST(req: NextRequest) {
       topP = 0.9,
       apiKey: clientSuppliedKey,
       customBaseUrl,
+      atomicBaseUrl,
     } = body;
 
     const apiKey = resolveApiKey(provider, clientSuppliedKey);
@@ -89,7 +92,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!apiKey && provider !== "ollama") {
+    // Atomic Chat runs without auth unless the user turned it on in its API panel.
+    if (!apiKey && provider !== "ollama" && provider !== "atomic") {
       return NextResponse.json(
         {
           error: `API key for ${provider.toUpperCase()} is required. Set ${PROVIDER_ENV_VARS[provider] || "the provider's API key"} in .env.local, or add your API key in Settings -> Cloud AI Providers.`,
@@ -348,9 +352,10 @@ export async function POST(req: NextRequest) {
     }
 
     // -------------------------------------------------------------
-    // 3. OPENAI / GROQ / DEEPSEEK / OPENROUTER / CUSTOM ENDPOINTS
+    // 3. OPENAI / GROQ / DEEPSEEK / OPENROUTER / ATOMIC CHAT / CUSTOM ENDPOINTS
     // -------------------------------------------------------------
     let endpointUrl = "https://api.openai.com/v1/chat/completions";
+    let upstreamModel = model;
     const customHeaders: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
@@ -364,6 +369,25 @@ export async function POST(req: NextRequest) {
       endpointUrl = "https://openrouter.ai/api/v1/chat/completions";
       customHeaders["HTTP-Referer"] = "http://localhost:3000";
       customHeaders["X-Title"] = "Lyra";
+    } else if (provider === "atomic") {
+      let atomicBase: string;
+      try {
+        atomicBase = normalizeAtomicBaseUrl(process.env.ATOMIC_CHAT_BASE_URL || atomicBaseUrl);
+      } catch {
+        return NextResponse.json({ error: "Invalid Atomic Chat base URL." }, { status: 400, headers: CORS_HEADERS });
+      }
+      endpointUrl = `${atomicBase}/chat/completions`;
+      upstreamModel = fromAtomicModelId(String(model));
+      if (!apiKey) delete customHeaders.Authorization;
+      // Remote Atomic Chat is LAN or tunnelled: same host policy as "custom" below.
+      try {
+        await assertOllamaHostUrl(endpointUrl);
+      } catch (err) {
+        if (err instanceof SsrfBlockedError) {
+          return NextResponse.json({ error: err.message }, { status: 403, headers: CORS_HEADERS });
+        }
+        return NextResponse.json({ error: "Invalid Atomic Chat base URL." }, { status: 400, headers: CORS_HEADERS });
+      }
     } else if (provider === "custom" && customBaseUrl) {
       if (typeof customBaseUrl !== "string") {
         return NextResponse.json({ error: "customBaseUrl must be a string." }, { status: 400, headers: CORS_HEADERS });
@@ -389,7 +413,7 @@ export async function POST(req: NextRequest) {
     messagesPayload.push(...toOpenAiMessages(formattedMessages));
 
     const openaiPayload: any = {
-      model,
+      model: upstreamModel,
       messages: messagesPayload,
       stream: true,
       temperature,
@@ -403,7 +427,7 @@ export async function POST(req: NextRequest) {
       signal: req.signal,
       // Never follow redirects for a user-supplied endpoint: a 302 to a
       // link-local/metadata address would bypass the host check above.
-      ...(provider === "custom" ? { redirect: "manual" as const } : {}),
+      ...(provider === "custom" || provider === "atomic" ? { redirect: "manual" as const } : {}),
     });
 
     if (!openAiRes.ok) {

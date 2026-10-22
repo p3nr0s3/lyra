@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { Eye, EyeSlash as EyeOff } from "@phosphor-icons/react";
 import { AppSettings } from "@/lib/types";
+import { fetchAtomicModels } from "@/lib/ollama";
+import { DEFAULT_ATOMIC_BASE_URL } from "@/lib/atomicChat";
 
 interface CloudTabProps {
   formData: AppSettings;
@@ -19,16 +21,101 @@ export const CloudTab: React.FC<CloudTabProps> = ({
     setShowKeys((prev) => ({ ...prev, [provider]: !prev[provider] }));
   };
 
+  const [atomicTest, setAtomicTest] = useState<{ state: "idle" | "testing" | "ok" | "error"; message?: string }>({ state: "idle" });
+
+  const testAtomicConnection = async () => {
+    setAtomicTest({ state: "testing" });
+    try {
+      const ids = await fetchAtomicModels(formData.apiKeys?.atomicBaseUrl, formData.apiKeys?.atomicApiKey);
+      setAtomicTest({
+        state: "ok",
+        message: ids.length > 0 ? `Connected — ${ids.length} model(s): ${ids.slice(0, 3).join(", ")}${ids.length > 3 ? "…" : ""}` : "Connected, but no model is loaded in Atomic Chat yet.",
+      });
+    } catch (err: any) {
+      setAtomicTest({ state: "error", message: err.message });
+    }
+  };
+
   return (
     <div className="space-y-4 animate-in fade-in duration-150">
       <div>
         <h3 className="text-sm font-bold text-[var(--foreground)]">Cloud Model API Keys</h3>
         <p className="text-xs text-[var(--muted)] mt-0.5">
-          Connect Google Gemini, Anthropic Claude, OpenAI, DeepSeek, and Groq.
+          Connect Atomic Chat, Google Gemini, Anthropic Claude, OpenAI, DeepSeek, and Groq.
         </p>
       </div>
 
       <div className="space-y-3">
+        {/* Atomic Chat (OpenAI-compatible, local or remote) */}
+        <div className="p-3 rounded-2xl bg-[var(--sidebar-bg)] border border-[var(--card-border)] space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-[var(--foreground)]">
+            <span className="flex items-center gap-1.5 text-rose-400">
+              Atomic Chat (Remote Access)
+            </span>
+            <a
+              href="https://github.com/AtomicBot-ai/Atomic-Chat"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] text-rose-400 hover:underline"
+            >
+              Docs ↗
+            </a>
+          </div>
+          <p className="text-[10px] text-[var(--muted)]">
+            Server URL from Atomic Chat&apos;s Local API Server panel. For another device, set its host to 0.0.0.0 (LAN) or use a tunnel URL. &quot;/v1&quot; is added automatically.
+          </p>
+          <input
+            type="text"
+            value={formData.apiKeys?.atomicBaseUrl || ""}
+            onChange={(e) => {
+              setAtomicTest({ state: "idle" });
+              setFormData({
+                ...formData,
+                apiKeys: { ...formData.apiKeys, atomicBaseUrl: e.target.value },
+              });
+            }}
+            placeholder={`${DEFAULT_ATOMIC_BASE_URL} or http://192.168.1.10:1337`}
+            className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--foreground)] focus:ring-1 focus:ring-rose-500 focus:outline-none"
+          />
+          <div className="relative">
+            <input
+              type={showKeys["atomic"] ? "text" : "password"}
+              value={formData.apiKeys?.atomicApiKey || ""}
+              onChange={(e) => {
+                setAtomicTest({ state: "idle" });
+                setFormData({
+                  ...formData,
+                  apiKeys: { ...formData.apiKeys, atomicApiKey: e.target.value },
+                });
+              }}
+              placeholder="API key (optional — only if enabled in Atomic Chat)"
+              className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--foreground)] focus:ring-1 focus:ring-rose-500 focus:outline-none pr-8"
+            />
+            <button
+              type="button"
+              onClick={() => toggleKeyVisibility("atomic")}
+              className="absolute right-2.5 top-2.5 text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              {showKeys["atomic"] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={testAtomicConnection}
+              disabled={atomicTest.state === "testing"}
+              className="px-3 py-1.5 text-[11px] font-semibold rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 disabled:opacity-50 cursor-pointer"
+            >
+              {atomicTest.state === "testing" ? "Testing..." : "Test Connection"}
+            </button>
+            {atomicTest.message && (
+              <span className={`text-[10px] ${atomicTest.state === "ok" ? "text-emerald-400" : "text-red-400"}`}>
+                {atomicTest.message}
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Google Gemini */}
         <div className="p-3 rounded-2xl bg-[var(--sidebar-bg)] border border-[var(--card-border)] space-y-1.5">
           <div className="flex items-center justify-between text-xs font-bold text-[var(--foreground)]">
