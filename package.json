@@ -37,7 +37,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.0",
     "remark-math": "^6.0.0",
-    "tailwind-merge": "^2.5.5"
+    "tailwind-merge": "^3.7.0"
   },
   "optionalDependencies": {
     "better-sqlite3": "^13.0.3"
