@@ -2,8 +2,9 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { CaretDown as ChevronDown, ArrowsClockwise as RefreshCw, Sparkle as Sparkles, Check, Cloud, Laptop, Key, MagnifyingGlass as Search, X, HardDrive, Cpu, Stack as Layers, CloudArrowDown as DownloadCloud, Trash as Trash2, SpinnerGap as Loader2, WarningCircle as AlertCircle, CheckCircle as CheckCircle2 } from "@phosphor-icons/react";
-import { OllamaModel, ApiKeysConfig, ModelPullProgress } from "@/lib/types";
-import { formatBytes, pullOllamaModel, deleteOllamaModel } from "@/lib/ollama";
+import { OllamaModel, ApiKeysConfig, ModelPullProgress, ModelOption } from "@/lib/types";
+import { formatBytes, pullOllamaModel, deleteOllamaModel, fetchAtomicModels } from "@/lib/ollama";
+import { isAtomicModelId, toAtomicModelId } from "@/lib/atomicChat";
 import { CLOUD_MODEL_PRESETS } from "@/lib/constants";
 import { toast } from "@/lib/toast";
 
@@ -122,19 +123,43 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         return <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">DeepSeek</span>;
       case "groq":
         return <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">Groq</span>;
+      case "atomic":
+        return <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">Atomic Chat</span>;
       default:
         return <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Ollama</span>;
     }
   };
 
-  const isSelectedCloud = CLOUD_MODEL_PRESETS.some((m) => m.id === selectedModel);
+  // Atomic Chat models are whatever its server has loaded, so they're listed
+  // live each time the picker opens (only once a base URL is configured).
+  const [atomicModelIds, setAtomicModelIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isOpen || !apiKeys?.atomicBaseUrl?.trim()) return;
+    let cancelled = false;
+    fetchAtomicModels(apiKeys.atomicBaseUrl, apiKeys.atomicApiKey)
+      .then((ids) => { if (!cancelled) setAtomicModelIds(ids); })
+      .catch(() => { if (!cancelled) setAtomicModelIds([]); });
+    return () => { cancelled = true; };
+  }, [isOpen, apiKeys?.atomicBaseUrl, apiKeys?.atomicApiKey]);
+
+  const cloudModels: ModelOption[] = [
+    ...atomicModelIds.map((id) => ({
+      id: toAtomicModelId(id),
+      name: id,
+      provider: "atomic" as const,
+      badge: "Remote",
+    })),
+    ...CLOUD_MODEL_PRESETS,
+  ];
+
+  const isSelectedCloud =cloudModels.some((m) => m.id === selectedModel) || isAtomicModelId(selectedModel);
 
   // Filter models
   const filteredLocalModels = models.filter((m) =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredCloudModels = CLOUD_MODEL_PRESETS.filter(
+  const filteredCloudModels = cloudModels.filter(
     (m) =>
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.provider.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -293,7 +318,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     : "text-[var(--muted)] hover:text-[var(--foreground)]"
                 }`}
               >
-                All Models ({models.length + CLOUD_MODEL_PRESETS.length})
+                All Models ({models.length + cloudModels.length})
               </button>
               <button
                 onClick={() => setActiveCategory("local")}
@@ -315,7 +340,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                 }`}
               >
                 <Cloud className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-                <span>Cloud ({CLOUD_MODEL_PRESETS.length})</span>
+                <span>Cloud ({cloudModels.length})</span>
               </button>
               <button
                 onClick={() => setActiveCategory("hub")}
@@ -644,7 +669,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
             {/* Modal Footer */}
             <div className="p-3 sm:px-4 border-t border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] flex items-center justify-between text-xs text-[var(--muted)]">
-              <span>{models.length} local + {CLOUD_MODEL_PRESETS.length} cloud models</span>
+              <span>{models.length} local + {cloudModels.length} cloud models</span>
               {onOpenSettings && (
                 <button
                   onClick={() => {

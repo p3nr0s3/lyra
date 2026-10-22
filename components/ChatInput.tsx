@@ -137,7 +137,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       }
     } else {
       const apiKey = getApiKeyForProvider(provider, apiKeys);
-      if (!apiKey && provider !== "custom") {
+      if (!apiKey && provider !== "custom" && provider !== "atomic") {
         return {
           isHealthy: false,
           warning: `API Key untuk provider ${provider.toUpperCase()} belum diisi. Masukkan API Key di Pengaturan.`,
